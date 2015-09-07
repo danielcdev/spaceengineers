@@ -1,0 +1,56 @@
+/*
+ * Author: Daniel Cotter
+ *
+ */
+
+IMyTimerBlock clock;
+IMyMotorStator rotor;
+IMySolarPanel trackingPanel;
+float powerPeak = 0F;
+float lastPowerReading = 0F;
+
+void Main() {
+	init();
+	float currentPower = getSolarPower();
+
+	if (currentPower == 0) { powerPeak = 0F; rotor.SetValue<float>("Velocity", -0.70F); } else { rotor.SetValue<float>("Velocity", -0.10F); }
+
+	if (currentPower == 0 || ((lastPowerReading - currentPower) / lastPowerReading) * 100 > 2 || currentPower > powerPeak) {
+		lastPowerReading = currentPower;
+		rotor.GetActionWithName("OnOff_On").Apply(rotor);
+	} else {
+		rotor.GetActionWithName("OnOff_Off").Apply(rotor);
+	}
+	
+	if (currentPower > powerPeak)
+		powerPeak = currentPower;
+
+	clock.GetActionWithName("Start").Apply(clock);
+}
+
+void init() {
+	if (clock != null)
+		return;
+
+	List<IMyTerminalBlock> timerBlocks = new List<IMyTerminalBlock>();
+	GridTerminalSystem.GetBlocksOfType<IMyTimerBlock>(timerBlocks);
+	clock = (IMyTimerBlock) timerBlocks[0];
+
+	List<IMyTerminalBlock> rotorBlocks = new List<IMyTerminalBlock>();
+	GridTerminalSystem.GetBlocksOfType<IMyMotorStator>(rotorBlocks);
+	rotor = (IMyMotorStator) rotorBlocks[0];
+
+	List<IMyTerminalBlock> solarPanels = new List<IMyTerminalBlock>();
+	GridTerminalSystem.GetBlocksOfType<IMySolarPanel>(solarPanels);
+	trackingPanel = (IMySolarPanel) solarPanels[0];
+}
+
+float getSolarPower() {
+	float solarAvailable = 0F;
+	string[] stats = trackingPanel.DetailedInfo.Split(' ');
+	solarAvailable = float.Parse(stats[4]);
+	if (solarAvailable >= 130)
+		solarAvailable = solarAvailable * 0.001F;
+
+	return solarAvailable;
+}
