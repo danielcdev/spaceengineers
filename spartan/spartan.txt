@@ -21,7 +21,7 @@ public interface Observer<T> {
 	void onNext(T t);
 }
 
-public enum Mode {
+public enum OperatingModeType {
 	UNDEFINED, LONG_TERM_STANDBY, STANDBY, GROUND, FLIGHT
 }
 
@@ -30,27 +30,27 @@ public enum SeEvent {
 }
 
 public class OperatingMode {
-	public Mode mode { get; set; }
+	public OperatingModeType operatingModeType { get; set; }
 
 	public OperatingMode() {
-		mode = Mode.UNDEFINED;
+		operatingModeType = OperatingModeType.UNDEFINED;
 	}
 
-	public string convert(Mode mode) {
-		switch (mode) {
-			case Mode.UNDEFINED:
+	public string convert(OperatingModeType operatingModeType) {
+		switch (operatingModeType) {
+			case OperatingModeType.UNDEFINED:
 				return "UNDEFINED";
 
-			case Mode.LONG_TERM_STANDBY:
+			case OperatingModeType.LONG_TERM_STANDBY:
 				return "LONG_TERM_STANDBY";
 
-			case Mode.STANDBY:
+			case OperatingModeType.STANDBY:
 				return "STANDBY";
 
-			case Mode.GROUND:
+			case OperatingModeType.GROUND:
 				return "GROUND";
 
-			case Mode.FLIGHT:
+			case OperatingModeType.FLIGHT:
 				return "FLIGHT";
 
 			default:
@@ -58,25 +58,25 @@ public class OperatingMode {
 		}
 	}
 
-	public Mode convert(string mode) {
-		switch (mode) {
+	public OperatingModeType convert(string operatingModeType) {
+		switch (operatingModeType) {
 			case "UNDEFINED":
-				return Mode.UNDEFINED;
+				return OperatingModeType.UNDEFINED;
 
 			case "LONG_TERM_STANDBY":
-				return Mode.LONG_TERM_STANDBY;
+				return OperatingModeType.LONG_TERM_STANDBY;
 
 			case "STANDBY":
-				return Mode.STANDBY;
+				return OperatingModeType.STANDBY;
 
 			case "GROUND":
-				return Mode.GROUND;
+				return OperatingModeType.GROUND;
 
 			case "FLIGHT":
-				return Mode.FLIGHT;
+				return OperatingModeType.FLIGHT;
 
 			default:
-				return Mode.UNDEFINED;
+				return OperatingModeType.UNDEFINED;
 		}
 	}
 }
@@ -94,11 +94,11 @@ public class OperatingModeHandler : Observable<OperatingMode> {
 			observers.Add(observer);
 	}
 
-	public void change(Mode mode) {
-		if (operatingMode.mode == mode)
+	public void change(OperatingModeType operatingModeType) {
+		if (operatingMode.operatingModeType == operatingModeType)
 			return;
 
-		operatingMode.mode = mode;
+		operatingMode.operatingModeType = operatingModeType;
 
 		foreach (var observer in observers)
 			observer.onNext(operatingMode);
@@ -161,7 +161,7 @@ public class SensorEventHandler : Observable<SensorEvent> {
 	}
 
 	public void fire(SensorEvent sensorEvent) {
-		//if (operatingModeHandler.operatingMode.mode != Mode.FLIGHT)
+		//if (operatingModeHandler.operatingMode.operatingModeType != OperatingModeType.FLIGHT)
 		//	return;
 
 		foreach (var observer in observers)
@@ -200,7 +200,7 @@ public class LocalTerminal : Observer<OperatingMode>, Observer<SensorEvent> {
 	}
 
 	public void onNext(OperatingMode operatingMode) {
-		write("Change mode [" + operatingMode.convert(operatingMode.mode) + "]");
+		write("Change mode [" + operatingMode.convert(operatingMode.operatingModeType) + "]");
 	}
 
 	public void onNext(SensorEvent sensorEvent) {
@@ -209,7 +209,7 @@ public class LocalTerminal : Observer<OperatingMode>, Observer<SensorEvent> {
 
 	private void displayHeader() {
 		textSurface.WriteText(header, false);
-		textSurface.WriteText(operatingModeHandler.operatingMode.convert(operatingModeHandler.operatingMode.mode), true);
+		textSurface.WriteText(operatingModeHandler.operatingMode.convert(operatingModeHandler.operatingMode.operatingModeType), true);
 		textSurface.WriteText("]\n\n", true);
 	}
 }
@@ -231,14 +231,14 @@ public class LightingSystem : Observer<OperatingMode> {
 	}
 
 	public void onNext(OperatingMode operatingMode) {
-		switch (operatingMode.mode) {
-			case Mode.UNDEFINED:
+		switch (operatingMode.operatingModeType) {
+			case OperatingModeType.UNDEFINED:
 			break;
 
-			case Mode.LONG_TERM_STANDBY:
+			case OperatingModeType.LONG_TERM_STANDBY:
 			break;
 
-			case Mode.STANDBY:
+			case OperatingModeType.STANDBY:
 				foreach (var light in interiorLights) 
 					light.SetValue<float>("Intensity", 5f);
 
@@ -254,7 +254,7 @@ public class LightingSystem : Observer<OperatingMode> {
 				}
 			break;
 
-			case Mode.GROUND:
+			case OperatingModeType.GROUND:
 				foreach (var light in interiorLights)
 					light.SetValue<float>("Intensity", 0.5f);
 
@@ -270,7 +270,7 @@ public class LightingSystem : Observer<OperatingMode> {
 				}
 			break;
 
-			case Mode.FLIGHT:
+			case OperatingModeType.FLIGHT:
 				foreach (var light in interiorLights) 
 					light.SetValue<float>("Intensity", 0.5f);
 
@@ -306,24 +306,24 @@ public class ThrustSystem : Observer<OperatingMode> {
 	}
 
 	public void onNext(OperatingMode operatingMode) {
-		switch (operatingMode.mode) {
-			case Mode.UNDEFINED:
+		switch (operatingMode.operatingModeType) {
+			case OperatingModeType.UNDEFINED:
 			break;
 
-			case Mode.LONG_TERM_STANDBY:
+			case OperatingModeType.LONG_TERM_STANDBY:
 			break;
 
-			case Mode.STANDBY:
+			case OperatingModeType.STANDBY:
 				foreach (var thruster in thrusters)
 					thruster.ApplyAction("OnOff_Off");
 			break;
 
-			case Mode.GROUND:
+			case OperatingModeType.GROUND:
 				foreach (var thruster in thrusters)
 					thruster.ApplyAction("OnOff_Off");
 			break;
 
-			case Mode.FLIGHT:
+			case OperatingModeType.FLIGHT:
 				foreach (var thruster in thrusters)
 					thruster.ApplyAction("OnOff_On");
 			break;
@@ -352,14 +352,14 @@ public class WheelSystem : Observer<OperatingMode>, Observer<SensorEvent> {
 	}
 
 	public void onNext(OperatingMode operatingMode) {
-		switch (operatingMode.mode) {
-			case Mode.UNDEFINED:
+		switch (operatingMode.operatingModeType) {
+			case OperatingModeType.UNDEFINED:
 			break;
 
-			case Mode.LONG_TERM_STANDBY:
+			case OperatingModeType.LONG_TERM_STANDBY:
 			break;
 
-			case Mode.STANDBY:
+			case OperatingModeType.STANDBY:
 				foreach (var wheel in wheels)
 					wheel.ApplyAction("OnOff_Off");
 
@@ -367,7 +367,7 @@ public class WheelSystem : Observer<OperatingMode>, Observer<SensorEvent> {
 				//	cockpits[0].SetValue<bool>("HandBrake", true);
 			break;
 
-			case Mode.GROUND:
+			case OperatingModeType.GROUND:
 				foreach (var wheel in wheels)
 					wheel.ApplyAction("OnOff_On");
 
@@ -375,7 +375,7 @@ public class WheelSystem : Observer<OperatingMode>, Observer<SensorEvent> {
 				//	cockpits[0].SetValue<bool>("HandBrake", true);
 			break;
 
-			case Mode.FLIGHT:
+			case OperatingModeType.FLIGHT:
 				foreach (var wheel in wheels)
 					wheel.ApplyAction("OnOff_On");
 
@@ -424,24 +424,24 @@ public class GyroscopeSystem : Observer<OperatingMode> {
 	}
 
 	public void onNext(OperatingMode operatingMode) {
-		switch (operatingMode.mode) {
-			case Mode.UNDEFINED:
+		switch (operatingMode.operatingModeType) {
+			case OperatingModeType.UNDEFINED:
 			break;
 
-			case Mode.LONG_TERM_STANDBY:
+			case OperatingModeType.LONG_TERM_STANDBY:
 			break;
 
-			case Mode.STANDBY:
+			case OperatingModeType.STANDBY:
 				foreach (var gyroscope in gyroscopes)
 					gyroscope.ApplyAction("OnOff_Off");
 			break;
 
-			case Mode.GROUND:
+			case OperatingModeType.GROUND:
 				foreach (var gyroscope in gyroscopes)
 					gyroscope.ApplyAction("OnOff_Off");
 			break;
 
-			case Mode.FLIGHT:
+			case OperatingModeType.FLIGHT:
 				foreach (var gyroscope in gyroscopes)
 					gyroscope.ApplyAction("OnOff_On");
 			break;
@@ -466,24 +466,24 @@ public class ReactorSystem : Observer<OperatingMode> {
 	}
 
 	public void onNext(OperatingMode operatingMode) {
-		switch (operatingMode.mode) {
-			case Mode.UNDEFINED:
+		switch (operatingMode.operatingModeType) {
+			case OperatingModeType.UNDEFINED:
 			break;
 
-			case Mode.LONG_TERM_STANDBY:
+			case OperatingModeType.LONG_TERM_STANDBY:
 			break;
 
-			case Mode.STANDBY:
+			case OperatingModeType.STANDBY:
 				foreach (var reactor in reactors)
 					reactor.ApplyAction("OnOff_Off");
 			break;
 
-			case Mode.GROUND:
+			case OperatingModeType.GROUND:
 				foreach (var reactor in reactors)
 					reactor.ApplyAction("OnOff_On");
 			break;
 
-			case Mode.FLIGHT:
+			case OperatingModeType.FLIGHT:
 				foreach (var reactor in reactors)
 					reactor.ApplyAction("OnOff_On");
 			break;
@@ -570,15 +570,15 @@ void oneTimeInstruction(string instruction) {
 Echo(instruction);
 	switch (instruction) {
 		case "mode standby":
-			operatingModeHandler.change(Mode.STANDBY);
+			operatingModeHandler.change(OperatingModeType.STANDBY);
 		break;
 
 		case "mode ground":
-			operatingModeHandler.change(Mode.GROUND);
+			operatingModeHandler.change(OperatingModeType.GROUND);
 		break;
 
 		case "mode flight":
-			operatingModeHandler.change(Mode.FLIGHT);
+			operatingModeHandler.change(OperatingModeType.FLIGHT);
 		break;
 
 		case "event takeoff":
