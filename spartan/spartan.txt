@@ -25,7 +25,7 @@ public enum OperatingModeType {
 	UNDEFINED, LONG_TERM_STANDBY, STANDBY, GROUND, FLIGHT
 }
 
-public enum SeEvent {
+public enum SensorEventType {
 	UNDEFINED, TAKEOFF, APPROACH
 }
 
@@ -106,21 +106,21 @@ public class OperatingModeHandler : Observable<OperatingMode> {
 }
 
 public class SensorEvent {
-	public SeEvent seEvent { get; set; }
+	public SensorEventType sensorEventType { get; set; }
 
-	public SensorEvent(SeEvent seEvent) {
-		this.seEvent = seEvent;
+	public SensorEvent(SensorEventType sensorEventType) {
+		this.sensorEventType = sensorEventType;
 	}
 
-	public string convert(SeEvent seEvent) {
-		switch (seEvent) {
-			case SeEvent.UNDEFINED:
+	public string convert(SensorEventType sensorEventType) {
+		switch (sensorEventType) {
+			case SensorEventType.UNDEFINED:
 				return "UNDEFINED";
 
-			case SeEvent.TAKEOFF:
+			case SensorEventType.TAKEOFF:
 				return "TAKEOFF";
 
-			case SeEvent.APPROACH:
+			case SensorEventType.APPROACH:
 				return "APPROACH";
 
 			default:
@@ -128,19 +128,19 @@ public class SensorEvent {
 		}
 	}
 
-	public SeEvent convert(string seEvent) {
-		switch (seEvent) {
+	public SensorEventType convert(string sensorEventType) {
+		switch (sensorEventType) {
 			case "UNDEFINED":
-				return SeEvent.UNDEFINED;
+				return SensorEventType.UNDEFINED;
 
 			case "TAKEOFF":
-				return SeEvent.TAKEOFF;
+				return SensorEventType.TAKEOFF;
 
 			case "APPROACH":
-				return SeEvent.APPROACH;
+				return SensorEventType.APPROACH;
 
 			default:
-				return SeEvent.UNDEFINED;
+				return SensorEventType.UNDEFINED;
 		}
 	}
 }
@@ -204,7 +204,7 @@ public class LocalTerminal : Observer<OperatingMode>, Observer<SensorEvent> {
 	}
 
 	public void onNext(SensorEvent sensorEvent) {
-		write("Event detected [" + sensorEvent.convert(sensorEvent.seEvent) + "]");
+		write("Event detected [" + sensorEvent.convert(sensorEvent.sensorEventType) + "]");
 	}
 
 	private void displayHeader() {
@@ -389,16 +389,16 @@ public class WheelSystem : Observer<OperatingMode>, Observer<SensorEvent> {
 	}
 
 	public void onNext(SensorEvent sensorEvent) {
-		switch (sensorEvent.seEvent) {
-			case SeEvent.UNDEFINED:
+		switch (sensorEvent.sensorEventType) {
+			case SensorEventType.UNDEFINED:
 			break;
 
-			case SeEvent.TAKEOFF:
+			case SensorEventType.TAKEOFF:
 				program.desiredWheelHeight = 1.02f;
 				program.Runtime.UpdateFrequency = UpdateFrequency.Update10;
 			break;
 
-			case SeEvent.APPROACH:
+			case SensorEventType.APPROACH:
 				program.desiredWheelHeight = -1.0f;
 				program.Runtime.UpdateFrequency = UpdateFrequency.Update10;
 			break;
@@ -582,11 +582,11 @@ Echo(instruction);
 		break;
 
 		case "event takeoff":
-			sensorEventHandler.fire(new SensorEvent(SeEvent.TAKEOFF));
+			sensorEventHandler.fire(new SensorEvent(SensorEventType.TAKEOFF));
 		break;
 
 		case "event approach":
-			sensorEventHandler.fire(new SensorEvent(SeEvent.APPROACH));
+			sensorEventHandler.fire(new SensorEvent(SensorEventType.APPROACH));
 		break;
 
 		default:
