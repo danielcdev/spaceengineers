@@ -1,0 +1,596 @@
+public abstract class Serializable {
+	protected abstract void toString(StringBuilder stringBuilder);
+	protected abstract void fromString();
+}
+
+public class Serializer {
+
+}
+
+public class Deserializer {
+	public Deserializer(string serialized) {
+
+	}
+}
+
+public interface Observable<T> {
+	void subscribe(Observer<T> t);
+}
+
+public interface Observer<T> {
+	void onNext(T t);
+}
+
+public enum Mode {
+	UNDEFINED, LONG_TERM_STANDBY, STANDBY, GROUND, FLIGHT
+}
+
+public enum SeEvent {
+	UNDEFINED, TAKEOFF, APPROACH
+}
+
+public class OperatingMode {
+	public Mode mode { get; set; }
+
+	public OperatingMode() {
+		mode = Mode.UNDEFINED;
+	}
+
+	public string convert(Mode mode) {
+		switch (mode) {
+			case Mode.UNDEFINED:
+				return "UNDEFINED";
+
+			case Mode.LONG_TERM_STANDBY:
+				return "LONG_TERM_STANDBY";
+
+			case Mode.STANDBY:
+				return "STANDBY";
+
+			case Mode.GROUND:
+				return "GROUND";
+
+			case Mode.FLIGHT:
+				return "FLIGHT";
+
+			default:
+				return "UNDEFINED";
+		}
+	}
+
+	public Mode convert(string mode) {
+		switch (mode) {
+			case "UNDEFINED":
+				return Mode.UNDEFINED;
+
+			case "LONG_TERM_STANDBY":
+				return Mode.LONG_TERM_STANDBY;
+
+			case "STANDBY":
+				return Mode.STANDBY;
+
+			case "GROUND":
+				return Mode.GROUND;
+
+			case "FLIGHT":
+				return Mode.FLIGHT;
+
+			default:
+				return Mode.UNDEFINED;
+		}
+	}
+}
+
+public class OperatingModeHandler : Observable<OperatingMode> {
+	private List<Observer<OperatingMode>> observers = new List<Observer<OperatingMode>>();
+	public OperatingMode operatingMode { get; private set; }
+
+	public OperatingModeHandler(OperatingMode operatingMode) {
+		this.operatingMode = operatingMode;
+	}
+
+	public void subscribe(Observer<OperatingMode> observer) {
+		if (!observers.Contains(observer))
+			observers.Add(observer);
+	}
+
+	public void change(Mode mode) {
+		if (operatingMode.mode == mode)
+			return;
+
+		operatingMode.mode = mode;
+
+		foreach (var observer in observers)
+			observer.onNext(operatingMode);
+	}
+}
+
+public class SensorEvent {
+	public SeEvent seEvent { get; set; }
+
+	public SensorEvent(SeEvent seEvent) {
+		this.seEvent = seEvent;
+	}
+
+	public string convert(SeEvent seEvent) {
+		switch (seEvent) {
+			case SeEvent.UNDEFINED:
+				return "UNDEFINED";
+
+			case SeEvent.TAKEOFF:
+				return "TAKEOFF";
+
+			case SeEvent.APPROACH:
+				return "APPROACH";
+
+			default:
+				return "UNDEFINED";
+		}
+	}
+
+	public SeEvent convert(string seEvent) {
+		switch (seEvent) {
+			case "UNDEFINED":
+				return SeEvent.UNDEFINED;
+
+			case "TAKEOFF":
+				return SeEvent.TAKEOFF;
+
+			case "APPROACH":
+				return SeEvent.APPROACH;
+
+			default:
+				return SeEvent.UNDEFINED;
+		}
+	}
+}
+
+public class SensorEventHandler : Observable<SensorEvent> {
+	private List<Observer<SensorEvent>> observers = new List<Observer<SensorEvent>>();
+	private OperatingModeHandler operatingModeHandler;
+	private LocalTerminal localTerminal;
+
+	public SensorEventHandler(OperatingModeHandler operatingModeHandler, LocalTerminal localTerminal) {
+		this.operatingModeHandler = operatingModeHandler;
+		this.localTerminal = localTerminal;
+	}
+
+	public void subscribe(Observer<SensorEvent> observer) {
+		if (!observers.Contains(observer))
+			observers.Add(observer);
+	}
+
+	public void fire(SensorEvent sensorEvent) {
+		//if (operatingModeHandler.operatingMode.mode != Mode.FLIGHT)
+		//	return;
+
+		foreach (var observer in observers)
+			observer.onNext(sensorEvent);
+	}
+}
+
+public class LocalTerminal : Observer<OperatingMode>, Observer<SensorEvent> {
+	private Queue<string> buffer = new Queue<string>();
+	private string header = "Spartan MBT v0.1.0 [";
+	private OperatingModeHandler operatingModeHandler;
+	private IMyTextSurface textSurface;
+
+	public LocalTerminal(OperatingModeHandler operatingModeHandler, SensorEventHandler sensorEventHandler, IMyTextSurface textSurface) {
+		this.operatingModeHandler = operatingModeHandler;
+		this.textSurface = textSurface;
+		operatingModeHandler.subscribe(this);
+		sensorEventHandler.subscribe(this);
+
+		textSurface.ContentType = ContentType.TEXT_AND_IMAGE;
+		displayHeader();
+	}
+
+	public void write(string text) {
+		if (buffer.Count >= 8)
+			buffer.Dequeue();
+
+		buffer.Enqueue(text + "\n");
+		displayHeader();
+
+		if (buffer == null || buffer.Count == 0)
+			return;
+
+		foreach (var line in buffer)
+			textSurface.WriteText(line, true);
+	}
+
+	public void onNext(OperatingMode operatingMode) {
+		write("Change mode [" + operatingMode.convert(operatingMode.mode) + "]");
+	}
+
+	public void onNext(SensorEvent sensorEvent) {
+		write("Event detected [" + sensorEvent.convert(sensorEvent.seEvent) + "]");
+	}
+
+	private void displayHeader() {
+		textSurface.WriteText(header, false);
+		textSurface.WriteText(operatingModeHandler.operatingMode.convert(operatingModeHandler.operatingMode.mode), true);
+		textSurface.WriteText("]\n\n", true);
+	}
+}
+
+public class LightingSystem : Observer<OperatingMode> {
+	private List<IMyInteriorLight> interiorLights = new List<IMyInteriorLight>();
+	private List<IMyInteriorLight> navigationLights = new List<IMyInteriorLight>();
+	private Program program;
+
+	public LightingSystem(Program program, OperatingModeHandler operatingModeHandler, LocalTerminal localTerminal) {
+		this.program = program;
+
+		operatingModeHandler.subscribe(this);
+
+		program.GridTerminalSystem.GetBlocksOfType(interiorLights, light => !light.CustomData.Contains("nav"));
+		program.GridTerminalSystem.GetBlocksOfType(navigationLights, light => light.CustomData.Contains("nav"));
+
+		localTerminal.write("Lighting System initialized");
+	}
+
+	public void onNext(OperatingMode operatingMode) {
+		switch (operatingMode.mode) {
+			case Mode.UNDEFINED:
+			break;
+
+			case Mode.LONG_TERM_STANDBY:
+			break;
+
+			case Mode.STANDBY:
+				foreach (var light in interiorLights) 
+					light.SetValue<float>("Intensity", 5f);
+
+				foreach (var light in navigationLights) {
+					if (light.CustomData.Contains("beacon")) {
+						light.SetValue<float>("Intensity", 5f);
+						light.SetValue<float>("Blink Interval", 0.0f);
+			
+						continue;
+					}
+
+					light.ApplyAction("OnOff_Off");
+				}
+			break;
+
+			case Mode.GROUND:
+				foreach (var light in interiorLights)
+					light.SetValue<float>("Intensity", 0.5f);
+
+				foreach (var light in navigationLights) {
+					if (light.CustomData.Contains("beacon")) {
+						light.SetValue<float>("Intensity", 0.5f);
+						light.SetValue<float>("Blink Interval", 0.0f);
+			
+						continue;
+					}
+
+					light.ApplyAction("OnOff_Off");
+				}
+			break;
+
+			case Mode.FLIGHT:
+				foreach (var light in interiorLights) 
+					light.SetValue<float>("Intensity", 0.5f);
+
+				foreach (var light in navigationLights) {
+					if (light.CustomData.Contains("beacon")) {
+						light.SetValue<float>("Intensity", 5f);
+						light.SetValue<float>("Blink Interval", 0.9f);
+			
+						continue;
+					}
+
+					light.ApplyAction("OnOff_On");
+				}
+			break;
+
+			default:
+			break;
+		}
+	}
+}
+
+public class ThrustSystem : Observer<OperatingMode> {
+	private List<IMyThrust> thrusters = new List<IMyThrust>();
+	private Program program;
+
+	public ThrustSystem(Program program, OperatingModeHandler operatingModeHandler, LocalTerminal localTerminal) {
+		this.program = program;
+
+		operatingModeHandler.subscribe(this);
+
+		program.GridTerminalSystem.GetBlocksOfType(thrusters);
+		localTerminal.write("Thrust System initialized");
+	}
+
+	public void onNext(OperatingMode operatingMode) {
+		switch (operatingMode.mode) {
+			case Mode.UNDEFINED:
+			break;
+
+			case Mode.LONG_TERM_STANDBY:
+			break;
+
+			case Mode.STANDBY:
+				foreach (var thruster in thrusters)
+					thruster.ApplyAction("OnOff_Off");
+			break;
+
+			case Mode.GROUND:
+				foreach (var thruster in thrusters)
+					thruster.ApplyAction("OnOff_Off");
+			break;
+
+			case Mode.FLIGHT:
+				foreach (var thruster in thrusters)
+					thruster.ApplyAction("OnOff_On");
+			break;
+
+			default:
+			break;
+		}
+	}
+}
+
+public class WheelSystem : Observer<OperatingMode>, Observer<SensorEvent> {
+	private List<IMyMotorSuspension> wheels = new List<IMyMotorSuspension>();
+	private List<IMyShipController> cockpits = new List<IMyShipController>();
+	private float desiredWheelHeight = -1.0f;
+	private Program program;
+
+	public WheelSystem(Program program, OperatingModeHandler operatingModeHandler, SensorEventHandler sensorEventHandler, LocalTerminal localTerminal) {
+		this.program = program;
+
+		operatingModeHandler.subscribe(this);
+		sensorEventHandler.subscribe(this);
+
+		program.GridTerminalSystem.GetBlocksOfType(wheels);
+		program.GridTerminalSystem.GetBlocksOfType(cockpits);
+		localTerminal.write("Wheel System initialized");
+	}
+
+	public void onNext(OperatingMode operatingMode) {
+		switch (operatingMode.mode) {
+			case Mode.UNDEFINED:
+			break;
+
+			case Mode.LONG_TERM_STANDBY:
+			break;
+
+			case Mode.STANDBY:
+				foreach (var wheel in wheels)
+					wheel.ApplyAction("OnOff_Off");
+
+				//if (cockpits.Count() > 0 && !cockpits[0].GetValue<bool>("Handbrake"))
+				//	cockpits[0].SetValue<bool>("HandBrake", true);
+			break;
+
+			case Mode.GROUND:
+				foreach (var wheel in wheels)
+					wheel.ApplyAction("OnOff_On");
+
+				//if (cockpits.Count() > 0 && cockpits[0].GetValue<bool>("Handbrake"))
+				//	cockpits[0].SetValue<bool>("HandBrake", true);
+			break;
+
+			case Mode.FLIGHT:
+				foreach (var wheel in wheels)
+					wheel.ApplyAction("OnOff_On");
+
+				//if (cockpits.Count() > 0 && cockpits[0].GetValue<bool>("Handbrake"))
+				//	cockpits[0].SetValue<bool>("HandBrake", true);
+			break;
+
+			default:
+			break;
+		}
+	}
+
+	public void onNext(SensorEvent sensorEvent) {
+		switch (sensorEvent.seEvent) {
+			case SeEvent.UNDEFINED:
+			break;
+
+			case SeEvent.TAKEOFF:
+				program.desiredWheelHeight = 1.02f;
+				program.Runtime.UpdateFrequency = UpdateFrequency.Update10;
+			break;
+
+			case SeEvent.APPROACH:
+				program.desiredWheelHeight = -1.0f;
+				program.Runtime.UpdateFrequency = UpdateFrequency.Update10;
+			break;
+
+			default:
+			break;
+		}
+	}
+}
+
+
+public class GyroscopeSystem : Observer<OperatingMode> {
+	private List<IMyGyro> gyroscopes = new List<IMyGyro>();
+	private Program program;
+
+	public GyroscopeSystem(Program program, OperatingModeHandler operatingModeHandler, LocalTerminal localTerminal) {
+		this.program = program;
+
+		operatingModeHandler.subscribe(this);
+
+		program.GridTerminalSystem.GetBlocksOfType(gyroscopes);
+		localTerminal.write("Gyroscope System initialized");
+	}
+
+	public void onNext(OperatingMode operatingMode) {
+		switch (operatingMode.mode) {
+			case Mode.UNDEFINED:
+			break;
+
+			case Mode.LONG_TERM_STANDBY:
+			break;
+
+			case Mode.STANDBY:
+				foreach (var gyroscope in gyroscopes)
+					gyroscope.ApplyAction("OnOff_Off");
+			break;
+
+			case Mode.GROUND:
+				foreach (var gyroscope in gyroscopes)
+					gyroscope.ApplyAction("OnOff_Off");
+			break;
+
+			case Mode.FLIGHT:
+				foreach (var gyroscope in gyroscopes)
+					gyroscope.ApplyAction("OnOff_On");
+			break;
+
+			default:
+			break;
+		}
+	}
+}
+
+public class ReactorSystem : Observer<OperatingMode> {
+	private List<IMyReactor> reactors = new List<IMyReactor>();
+	private Program program;
+
+	public ReactorSystem(Program program, OperatingModeHandler operatingModeHandler, LocalTerminal localTerminal) {
+		this.program = program;
+
+		operatingModeHandler.subscribe(this);
+
+		program.GridTerminalSystem.GetBlocksOfType(reactors);
+		localTerminal.write("Reactor System initialized");
+	}
+
+	public void onNext(OperatingMode operatingMode) {
+		switch (operatingMode.mode) {
+			case Mode.UNDEFINED:
+			break;
+
+			case Mode.LONG_TERM_STANDBY:
+			break;
+
+			case Mode.STANDBY:
+				foreach (var reactor in reactors)
+					reactor.ApplyAction("OnOff_Off");
+			break;
+
+			case Mode.GROUND:
+				foreach (var reactor in reactors)
+					reactor.ApplyAction("OnOff_On");
+			break;
+
+			case Mode.FLIGHT:
+				foreach (var reactor in reactors)
+					reactor.ApplyAction("OnOff_On");
+			break;
+
+			default:
+			break;
+		}
+	}
+}
+
+// Temp
+private List<IMyMotorSuspension> wheels = new List<IMyMotorSuspension>();
+private float desiredWheelHeight = -1.0f;
+
+private OperatingMode operatingMode = new OperatingMode();
+private OperatingModeHandler operatingModeHandler;
+private SensorEventHandler sensorEventHandler;
+private LocalTerminal localTerminal;
+private LightingSystem lightingSystem;
+private ThrustSystem thrustSystem;
+private WheelSystem wheelSystem;
+private GyroscopeSystem gyroscopeSystem;
+private ReactorSystem reactorSystem;
+
+public Program() {
+// Temp
+GridTerminalSystem.GetBlocksOfType(wheels);
+
+	Echo("Spartan initializing...\nPerforming deserialization");
+
+	//Deserializer deserializer = new Deserializer("OperatingMode:mode=GROUND;\n");
+	//deserializer.toClass(operatingMode);
+
+	Echo("\nInitializing Operating Mode Handler");
+	operatingModeHandler = new OperatingModeHandler(operatingMode);
+
+	Echo("                  Sensor Event Handler");
+	sensorEventHandler = new SensorEventHandler(operatingModeHandler, localTerminal);
+
+	Echo("                  Local Terminal");
+	localTerminal = new LocalTerminal(operatingModeHandler, sensorEventHandler, Me.GetSurface(0));
+
+	lightingSystem = new LightingSystem(this, operatingModeHandler, localTerminal);
+	thrustSystem = new ThrustSystem(this, operatingModeHandler, localTerminal);
+	wheelSystem = new WheelSystem(this, operatingModeHandler, sensorEventHandler, localTerminal);
+	gyroscopeSystem = new GyroscopeSystem(this, operatingModeHandler, localTerminal);
+	reactorSystem = new ReactorSystem(this, operatingModeHandler, localTerminal);
+
+	localTerminal.write("Ready.");
+}
+
+public void Save() {
+	//Serializer serializer = new Serializer();
+	//serializer.append(operatingMode);
+	
+	//Storage = serializer.toString();
+}
+
+public void Main(string argument, UpdateType updateType) {
+	if ((updateType & (UpdateType.Trigger | UpdateType.Terminal)) != 0)
+		oneTimeInstruction(argument);
+
+	if ((updateType & UpdateType.Update10) != 0)
+		runContinuousLogic();
+}
+
+void runContinuousLogic() {
+	foreach (var thisWheel in wheels) {
+		float thisHeight = thisWheel.GetValue<float>("Height");
+                   
+		if (Math.Abs(thisHeight + desiredWheelHeight) > 2.0f) {
+			Runtime.UpdateFrequency = UpdateFrequency.Once;
+			continue;
+		}
+
+		if (thisHeight < desiredWheelHeight)
+				thisWheel.SetValue<float>("Height", thisHeight + 0.05f);
+		else
+				thisWheel.SetValue<float>("Height", thisHeight - 0.05f);
+	}
+}
+
+void oneTimeInstruction(string instruction) {
+Echo(instruction);
+	switch (instruction) {
+		case "mode standby":
+			operatingModeHandler.change(Mode.STANDBY);
+		break;
+
+		case "mode ground":
+			operatingModeHandler.change(Mode.GROUND);
+		break;
+
+		case "mode flight":
+			operatingModeHandler.change(Mode.FLIGHT);
+		break;
+
+		case "event takeoff":
+			sensorEventHandler.fire(new SensorEvent(SeEvent.TAKEOFF));
+		break;
+
+		case "event approach":
+			sensorEventHandler.fire(new SensorEvent(SeEvent.APPROACH));
+		break;
+
+		default:
+			localTerminal.write("Unknown instruction [" + instruction + "]");
+		break;
+	}
+}
