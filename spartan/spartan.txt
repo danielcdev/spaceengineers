@@ -85,6 +85,10 @@ public class OperatingModeHandler : Observable<OperatingMode> {
 	private List<Observer<OperatingMode>> observers = new List<Observer<OperatingMode>>();
 	public OperatingMode operatingMode { get; private set; }
 
+	public OperatingModeHandler() {
+		operatingMode = new OperatingMode();
+	}
+
 	public OperatingModeHandler(OperatingMode operatingMode) {
 		this.operatingMode = operatingMode;
 	}
@@ -106,7 +110,7 @@ public class OperatingModeHandler : Observable<OperatingMode> {
 }
 
 public class SensorEvent {
-	public SensorEventType sensorEventType { get; set; }
+	public SensorEventType sensorEventType { get; private set; }
 
 	public SensorEvent(SensorEventType sensorEventType) {
 		this.sensorEventType = sensorEventType;
@@ -161,17 +165,105 @@ public class SensorEventHandler : Observable<SensorEvent> {
 	}
 
 	public void fire(SensorEvent sensorEvent) {
-		//if (operatingModeHandler.operatingMode.operatingModeType != OperatingModeType.FLIGHT)
-		//	return;
-
 		foreach (var observer in observers)
 			observer.onNext(sensorEvent);
 	}
 }
 
+public class DebugEvent {
+	public string message { get; private set; }
+
+	public DebugEvent(string message) {
+		if (string.IsNullOrEmpty(message))
+			this.message = "[WARNING] Debug Event fired with empty message";
+		else
+			this.message = message;
+	}
+
+	public DebugEvent(Exception exception) {
+		string exceptionMessage;
+
+		if (exception == null || (exceptionMessage = exception.ToString()) == null || exceptionMessage.Length == 0) {
+			message = "[WARNING] Debug Event fired with empty exception";
+			return;
+		}
+
+		StringBuilder stringBuilder = new StringBuilder();
+		stringBuilder.Append(exceptionMessage);
+
+		while ((exception = exception.InnerException) != null)
+			stringBuilder.Append(exception.ToString());
+
+		message = stringBuilder.ToString();
+	}
+}
+
+public class DebugEventHandler : Observable<DebugEvent> {
+	private List<Observer<DebugEvent>> observers = new List<Observer<DebugEvent>>();
+
+	public void subscribe(Observer<DebugEvent> observer) {
+		if (!observers.Contains(observer))
+			observers.Add(observer);
+	}
+
+	public void fire(DebugEvent debugEvent) {
+		foreach (var observer in observers)
+			observer.onNext(debugEvent);
+	}
+}
+
+public class DebugTerminal : Observer<DebugEvent> {
+	private List<IMyTextPanel> debugTerminals = new List<IMyTextPanel>();
+	private bool debugSystemActive = false;
+
+	public DebugTerminal(Program program, DebugEventHandler debugEventHandler) {
+		if (program == null)
+			return;
+
+		if (debugEventHandler == null) {
+			program.Echo("[SEVERE] DebugEventHandler was not properly instantiated");
+			return;
+		}
+
+		program.GridTerminalSystem.GetBlocksOfType(debugTerminals, textPanel => textPanel.CustomData.Contains("SSMS debug"));
+
+		if (debugTerminals == null || debugTerminals.Count() == 0)
+			return;
+
+		debugSystemActive = true;
+
+		foreach (var debugTerminal in debugTerminals) {
+			debugTerminal.ContentType = ContentType.TEXT_AND_IMAGE;
+			displayHeader(debugTerminal);
+		}
+
+		debugEventHandler.subscribe(this);
+		program.Echo(debugTerminals.Count() + " debug terminal(s) reporting");
+	}
+
+	public void onNext(DebugEvent debugEvent) {
+		write(debugEvent.message);
+	}
+
+	private void write(string text) {
+		if (!debugSystemActive)
+			return;
+
+		foreach (var debugTerminal in debugTerminals) {
+			debugTerminal.WriteText(DateTime.Now.ToString() + "\n", true);
+			debugTerminal.WriteText(text + "\n\n", true);
+		}
+	}
+
+	private void displayHeader(IMyTextPanel iMyTextPanel) {
+		iMyTextPanel.WriteText("Spartan SMS Debug\n", false);
+		iMyTextPanel.WriteText(debugTerminals.Count().ToString() + " debug terminal(s) reporting\n\n", true);
+	}
+}
+
 public class LocalTerminal : Observer<OperatingMode>, Observer<SensorEvent> {
 	private Queue<string> buffer = new Queue<string>();
-	private string header = "Spartan MBT v0.1.0 [";
+	private string header = "Spartan SMS v0.1.0 [";
 	private OperatingModeHandler operatingModeHandler;
 	private IMyTextSurface textSurface;
 
@@ -494,11 +586,17 @@ public class ReactorSystem : Observer<OperatingMode> {
 	}
 }
 
+public class SpartanServiceLocator {
+
+}
+
 // Temp
 private List<IMyMotorSuspension> wheels = new List<IMyMotorSuspension>();
 private float desiredWheelHeight = -1.0f;
 
-private OperatingMode operatingMode = new OperatingMode();
+
+private DebugEventHandler debugEventHandler;
+private DebugTerminal debugTerminal;
 private OperatingModeHandler operatingModeHandler;
 private SensorEventHandler sensorEventHandler;
 private LocalTerminal localTerminal;
@@ -509,30 +607,47 @@ private GyroscopeSystem gyroscopeSystem;
 private ReactorSystem reactorSystem;
 
 public Program() {
-// Temp
-GridTerminalSystem.GetBlocksOfType(wheels);
+	Echo("Spartan Ship Management System");
 
-	Echo("Spartan initializing...\nPerforming deserialization");
+	try {
+		Echo("Instantiating Debugging System");
+	
+		debugEventHandler = new DebugEventHandler();
+		debugTerminal = new DebugTerminal(this, debugEventHandler);
+	} catch (Exception e) {
+		Echo("[SEVERE] Failed to instantiate Debugging System");
+		Echo(e.ToString());
+	}
 
-	//Deserializer deserializer = new Deserializer("OperatingMode:mode=GROUND;\n");
-	//deserializer.toClass(operatingMode);
+	try {
+		// Temp
+		GridTerminalSystem.GetBlocksOfType(wheels);
 
-	Echo("\nInitializing Operating Mode Handler");
-	operatingModeHandler = new OperatingModeHandler(operatingMode);
+		Echo("\nPerforming deserialization");
+		//Deserializer deserializer = new Deserializer("OperatingMode:mode=GROUND;\n");
+		//deserializer.toClass(operatingMode);
 
-	Echo("                  Sensor Event Handler");
-	sensorEventHandler = new SensorEventHandler(operatingModeHandler, localTerminal);
+		Echo("\nInitializing Operating Mode Handler");
+		operatingModeHandler = new OperatingModeHandler();
 
-	Echo("                  Local Terminal");
-	localTerminal = new LocalTerminal(operatingModeHandler, sensorEventHandler, Me.GetSurface(0));
+		Echo("                  Sensor Event Handler");
+		sensorEventHandler = new SensorEventHandler(operatingModeHandler, localTerminal);
 
-	lightingSystem = new LightingSystem(this, operatingModeHandler, localTerminal);
-	thrustSystem = new ThrustSystem(this, operatingModeHandler, localTerminal);
-	wheelSystem = new WheelSystem(this, operatingModeHandler, sensorEventHandler, localTerminal);
-	gyroscopeSystem = new GyroscopeSystem(this, operatingModeHandler, localTerminal);
-	reactorSystem = new ReactorSystem(this, operatingModeHandler, localTerminal);
+		Echo("                  Local Terminal");
+		localTerminal = new LocalTerminal(operatingModeHandler, sensorEventHandler, Me.GetSurface(0));
 
-	localTerminal.write("Ready.");
+		lightingSystem = new LightingSystem(this, operatingModeHandler, localTerminal);
+		thrustSystem = new ThrustSystem(this, operatingModeHandler, localTerminal);
+		wheelSystem = new WheelSystem(this, operatingModeHandler, sensorEventHandler, localTerminal);
+		gyroscopeSystem = new GyroscopeSystem(this, operatingModeHandler, localTerminal);
+		reactorSystem = new ReactorSystem(this, operatingModeHandler, localTerminal);
+
+		localTerminal.write("Ready.");
+	} catch (Exception e) {
+		debugEventHandler.fire(new DebugEvent(e.ToString()));
+	} finally {
+		checkInstructionCountUtilization();
+	}
 }
 
 public void Save() {
@@ -543,14 +658,20 @@ public void Save() {
 }
 
 public void Main(string argument, UpdateType updateType) {
-	if ((updateType & (UpdateType.Trigger | UpdateType.Terminal)) != 0)
-		oneTimeInstruction(argument);
+	try {
+		if ((updateType & (UpdateType.Trigger | UpdateType.Terminal)) != 0)
+			oneTimeInstruction(argument);
 
-	if ((updateType & UpdateType.Update10) != 0)
-		runContinuousLogic();
+		if ((updateType & UpdateType.Update10) != 0)
+			runContinuousLogic();
+	} catch (Exception e) {
+		debugEventHandler.fire(new DebugEvent(e.ToString()));
+	} finally {
+		checkInstructionCountUtilization();
+	}
 }
 
-void runContinuousLogic() {
+private void runContinuousLogic() {
 	foreach (var thisWheel in wheels) {
 		float thisHeight = thisWheel.GetValue<float>("Height");
                    
@@ -566,8 +687,7 @@ void runContinuousLogic() {
 	}
 }
 
-void oneTimeInstruction(string instruction) {
-Echo(instruction);
+private void oneTimeInstruction(string instruction) {
 	switch (instruction) {
 		case "mode standby":
 			operatingModeHandler.change(OperatingModeType.STANDBY);
@@ -593,4 +713,11 @@ Echo(instruction);
 			localTerminal.write("Unknown instruction [" + instruction + "]");
 		break;
 	}
+}
+
+private void checkInstructionCountUtilization() {
+	float instructionCountUtilization = ((float) Runtime.CurrentInstructionCount / (float) Runtime.MaxInstructionCount) * 100f;
+
+	if (instructionCountUtilization >= 60f)
+		debugEventHandler.fire(new DebugEvent(instructionCountUtilization.ToString("0.000") + "% instruction count utilization"));
 }
